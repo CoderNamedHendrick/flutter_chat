@@ -23,7 +23,7 @@ class Room {
         maxPeople: json['maxPeople'],
         private: json['private'],
         creator: json['creator'],
-        users: json['users'],
+        users: json['users'] ?? {},
       );
 
   Map<String, dynamic> toJson() => {
