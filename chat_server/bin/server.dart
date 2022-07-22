@@ -39,6 +39,7 @@ void _handler(WebSocketChannel webSocket) {
 
   webSocket.on('connection', (io, inData) {
     stdout.writeln('[RECEIVED]: $inData');
+    io.sink.add('connect');
   });
 
   webSocket.on('validate', (io, inData) {
