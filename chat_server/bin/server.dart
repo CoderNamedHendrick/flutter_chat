@@ -1,22 +1,20 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:app_models/models.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import 'models/cb_socket.dart';
-import 'models/room.dart';
-import 'models/user_descriptor.dart';
-
 typedef WebSocketCallback = void Function(
     WebSocketChannel io, Map<String, dynamic>? inData);
 
-const _clients = <WebSocketChannel>[];
-const users = <String, UserDescriptor>{};
-const rooms = <String, Room>{};
+final _clients = <WebSocketChannel>[];
+final _socketStreams = <int, Stream>{};
+final users = <String, UserDescriptor>{};
+final rooms = <String, Room>{};
 
 // Configure routes.
 final _router = Router()
@@ -35,10 +33,13 @@ Response _echoHandler(Request request) {
 
 void _handler(WebSocketChannel webSocket) {
   _clients.add(webSocket);
-  stdout.writeln('[CONNECTED] $webSocket');
+  stdout.writeln('[CONNECTED]]');
+  _socketStreams[webSocket.hashCode] = webSocket.stream.asBroadcastStream();
 
   webSocket.on('connection', (io, inData) {
     stdout.writeln('[RECEIVED]: $inData');
+    stdout.writeln('[STREAMS ON SERVER]: ${_socketStreams.length}');
+    stdout.writeln('[SOCKETS ON SERVER]: ${_clients.length}');
     io.sink.add('connect');
   });
 
@@ -55,7 +56,7 @@ void _handler(WebSocketChannel webSocket) {
     } else {
       users[u.userName] = u;
       io.broadcast('newUser', users);
-      io.sink.add({'status': 'created'});
+      io.sink.add(jsonEncode({'status': 'created'}));
     }
   });
 
@@ -67,31 +68,31 @@ void _handler(WebSocketChannel webSocket) {
     } else {
       rooms[r.roomName] = r;
       io.broadcast('created', rooms);
-      io.sink.add(jsonEncode({'status': 'created', 'rooms': rooms}));
+      io.sink.add(jsonEncode({'status': 'created', 'data': rooms}));
     }
   });
 
   webSocket.on('listRooms', (io, inData) {
-    io.sink.add(jsonEncode(rooms));
+    io.sink.add(jsonEncode({'data': rooms}));
   });
 
   webSocket.on('listUsers', (io, inData) {
-    io.sink.add(jsonEncode(users));
+    io.sink.add(jsonEncode({'data': users}));
   });
 
   webSocket.on('join', (io, inData) {
     assert(inData != null, 'Data shouldn\'t be null for this call');
     final r = rooms[inData!['roomName']];
     if (r == null) throw 'Room Doesn\'t exist';
-    if (r.users.length >= r.maxPeople) {
+    if (r.users!.length >= r.maxPeople) {
       io.sink.add(jsonEncode({'status': 'full'}));
     } else {
       final u = users[inData['userName']];
       if (u == null) throw 'User doesn\'t exist';
 
-      r.users[inData['userName']] = u;
+      r.users![inData['userName']] = u;
       io.broadcast('joined', r);
-      io.sink.add(jsonEncode({'status': 'joined', 'room': r}));
+      io.sink.add(jsonEncode({'status': 'joined', 'data': r}));
     }
   });
 
@@ -110,7 +111,7 @@ void _handler(WebSocketChannel webSocket) {
   webSocket.on('leave', (io, inData) {
     assert(inData != null, 'Data shouldn\'t be null for this call');
     final r = rooms[inData!['roomName']];
-    r?.users.remove(inData['userName']);
+    r?.users!.remove(inData['userName']);
     io.broadcast('left', r);
     io.sink.add(jsonEncode({'status': 'ok'}));
   });
@@ -128,7 +129,7 @@ void _handler(WebSocketChannel webSocket) {
     if (r == null) throw 'Room Doesn\'t exist';
 
     final users = r.users;
-    users.remove(inData['userName']);
+    users!.remove(inData['userName']);
     io.broadcast('kicked', r);
     io.sink.add(jsonEncode({'status': 'ok'}));
   });
@@ -147,9 +148,11 @@ void main(List<String> args) async {
   print('Server listening on port ${server.port}');
 }
 
+extension StreamHandler on Stream {}
+
 extension SocketChannelHandler on WebSocketChannel {
   void on(String connectionMessage, WebSocketCallback webSocket) {
-    stream.listen(
+    _socketStreams[hashCode]?.listen(
       (event) {
         final worker = SocketCallbackModel.fromJson(
             jsonDecode(event) as Map<String, dynamic>);
@@ -161,8 +164,11 @@ extension SocketChannelHandler on WebSocketChannel {
       onError: (error) {
         stderr.writeln(error);
       },
+      cancelOnError: false,
       onDone: () {
-        sink.close(closeCode, closeReason);
+        stdout.writeln('[DONE]');
+        _socketStreams.remove(hashCode);
+        _clients.remove(this);
       },
     );
   }
@@ -174,9 +180,10 @@ extension SocketChannelHandler on WebSocketChannel {
 
 extension ClientsListHandler on List<WebSocketChannel> {
   void emit<T>(String message, T object, WebSocketChannel current) {
-    final clients = where((element) => element != current).toList();
+    final clients =
+        where((element) => element.hashCode != current.hashCode).toList();
     for (final client in clients) {
-      client.sink.add(jsonEncode({'status': message, 'data': object}));
+      client.sink.add(jsonEncode({'message': message, 'data': object}));
     }
   }
 }

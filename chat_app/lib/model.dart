@@ -55,7 +55,9 @@ class FlutterChatModel extends Model {
   }
 
   void addMessage(String inUserName, String inMessage) {
+    // print('[ROOM MESSAGES LENGTH]: ${currentRoomMessages.length}');
     currentRoomMessages.add({'userName': inUserName, 'message': inMessage});
+    // print('[ROOM MESSAGES LENGTH]: ${currentRoomMessages.length}');
     notifyListeners();
   }
 

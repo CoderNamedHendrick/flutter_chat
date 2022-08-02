@@ -1,38 +1,39 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:scoped_model/scoped_model.dart';
 
-import 'flutter_chat_main.dart';
-import 'model.dart' show model;
+import 'login_dialog.dart';
+import 'model.dart' show FlutterChatModel, model;
+import 'screens/screens.dart';
 
 void main() {
   startMeUp() async {
     Directory docDir = await getApplicationDocumentsDirectory();
     model.docDir = docDir;
 
-    var credentialsFile = File(join(model.docDir.path, 'credentials'));
+    var credentialsFile = File(p.join(model.docDir.path, 'credentials'));
     var exists = await credentialsFile.exists();
 
-    var credentials;
+    String credentials;
     if (exists) {
       credentials = await credentialsFile.readAsString();
       List credParts = credentials.split('============');
-      LoginDialog().validateWithStoredCredentials(credParts[0], credParts[1]);
+      const LoginDialog().validateWithStoredCredentials(credParts[0], credParts[1]);
     } else {
       await showDialog(
           context: model.rootBuildContext,
           barrierDismissible: false,
           builder: (inDialogContext) {
-            return LoginDialog();
+            return const LoginDialog();
           });
     }
   }
 
-  startMeUp();
   runApp(const FlutterChat());
+  startMeUp();
 }
 
 class FlutterChat extends StatelessWidget {
@@ -44,6 +45,53 @@ class FlutterChat extends StatelessWidget {
       title: 'Flutter Demo',
       home: Scaffold(body: FlutterChatMain()),
     );
+  }
+}
+
+class FlutterChatMain extends StatelessWidget {
+  const FlutterChatMain({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    model.rootBuildContext = context;
+    return ScopedModel(
+      model: model,
+      child: ScopedModelDescendant<FlutterChatModel>(
+        builder: (context, inChild, inModel) {
+          return Navigator(
+            initialRoute: '/',
+            onGenerateRoute: (settings) {
+              switch (settings.name) {
+                case '/':
+                  return MaterialPageRoute(builder: (_) => const Home());
+                case '/Lobby':
+                  return MaterialPageRoute(builder: (_) => const Lobby());
+                case '/Room':
+                  return MaterialPageRoute(builder: (_) => const Room());
+                case '/UserList':
+                  return MaterialPageRoute(builder: (_) => const UserList());
+                case '/CreateRoom':
+                  return MaterialPageRoute(builder: (_) => const CreateRoom());
+                default:
+                  return _errorRoute();
+              }
+            },
+            // home: const Home(),
+          );
+        },
+      ),
+    );
+  }
+
+  static Route<dynamic> _errorRoute() {
+    return MaterialPageRoute(builder: (_) {
+      return Scaffold(
+        backgroundColor: Colors.red.shade300,
+        body: const Center(
+          child: Text('Page not found!'),
+        ),
+      );
+    });
   }
 }
 

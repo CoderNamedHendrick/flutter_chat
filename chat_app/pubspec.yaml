@@ -36,6 +36,8 @@ dependencies:
   cupertino_icons: ^1.0.2
   scoped_model: ^2.0.0-nullsafety.0
   path_provider: ^2.0.11
+  app_models:
+    path: ../
 
 dev_dependencies:
   flutter_test:
